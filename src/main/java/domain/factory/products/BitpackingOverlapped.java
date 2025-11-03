@@ -1,10 +1,10 @@
-package domain.value.object.factory.products;
+package domain.factory.products;
 
 import domain.BitPacking;
-import domain.entity.BitPackingFactory;
-import domain.value.object.CompressionTypeEnum;
-import domain.value.object.PackedData;
-import domain.value.object.UnpackedData;
+import domain.factory.BitPackingFactory;
+import domain.factory.CompressionTypeEnum;
+import domain.entities.PackedData;
+import domain.entities.UnpackedData;
 
 public class BitpackingOverlapped implements BitPacking {
     private final CompressionTypeEnum TYPE = CompressionTypeEnum.OVERLAPPED;
@@ -12,6 +12,8 @@ public class BitpackingOverlapped implements BitPacking {
 
     /**
      * This method compresses data with unaligned bit packing (values can span multiple words)
+     * Format: [Header: 32 bits] [Compressed Data]
+     * Header: 16 bits = originalSize, 16 bits = bitsPerValue
      * @param fromUnpackedData
      * @param toPackedData
      **/
@@ -23,19 +25,23 @@ public class BitpackingOverlapped implements BitPacking {
         int totalBits = originalArrayLength * maxBitsNeeded;
         int requiredWords = (totalBits + 31) / 32;
 
-        int[] compressedData = new int[requiredWords];
+        int[] compressedData = new int[requiredWords + 1];
+
+        int header = (originalArrayLength << 16) | maxBitsNeeded;
+        compressedData[0] = header;
+
         int bitPosition = 0;
 
         for (int i = 0; i < originalArrayLength; i++) {
             int value = fromUnpackedData.getData()[i] & ((1 << maxBitsNeeded) - 1);
-            int wordIndex = bitPosition / 32;
-            int bitOffset = bitPosition % 32;
+            int wordIndex = (bitPosition / 32) + 1;
+            int bitOffset = bitPosition & 31;
 
             int bitsRemainingInWord = 32 - bitOffset;
 
-            if(bitsRemainingInWord >= maxBitsNeeded) { // Value fits entirely in current word
+            if(bitsRemainingInWord >= maxBitsNeeded) {
                 compressedData[wordIndex] |= (value << bitOffset);
-            } else { // Value spans two words
+            } else {
                 compressedData[wordIndex] |= (value << bitOffset);
                 compressedData[wordIndex + 1] |= (value >>> bitsRemainingInWord);
             }
@@ -45,28 +51,31 @@ public class BitpackingOverlapped implements BitPacking {
 
         toPackedData.setData(compressedData);
         toPackedData.setOriginalSize(originalArrayLength);
-        toPackedData.setCompressedSize(requiredWords);
+        toPackedData.setCompressedSize(requiredWords + 1);
         toPackedData.setBitsPerValue(maxBitsNeeded);
         this.lastPackedData = toPackedData;
     }
 
     @Override
     public void decompress(PackedData fromPackedData, UnpackedData toUnpackedData) {
-        int maxBitsNeeded = fromPackedData.getBitsPerValue();
-        int originalArrayLength = fromPackedData.getOriginalSize();
+        // Lire l'en-tête
+        int header = fromPackedData.getData()[0];
+        int originalArrayLength = (header >>> 16) & 0xFFFF;
+        int maxBitsNeeded = header & 0xFFFF;
+
         int[] result = new int[originalArrayLength];
 
         int mask = (1 << maxBitsNeeded) - 1;
         int bitPosition = 0;
 
         for (int i = 0; i < originalArrayLength; i++) {
-            int wordIndex = bitPosition / 32;
-            int bitOffset = bitPosition % 32;
+            int wordIndex = (bitPosition / 32) + 1;
+            int bitOffset = bitPosition & 31;
             int bitsRemainingInWord = 32 - bitOffset;
 
-            if (bitsRemainingInWord >= maxBitsNeeded) { // Value fits entirely in current word
+            if (bitsRemainingInWord >= maxBitsNeeded) {
                 result[i] = (fromPackedData.getData()[wordIndex] >>> bitOffset) & mask;
-            } else { // Value spans two words
+            } else {
                 int lowBits = fromPackedData.getData()[wordIndex] >>> bitOffset;
                 int highBits = fromPackedData.getData()[wordIndex + 1] << bitsRemainingInWord;
                 result[i] = (lowBits | highBits) & mask;
@@ -81,10 +90,13 @@ public class BitpackingOverlapped implements BitPacking {
 
     @Override
     public int get(int index) {
-        int bits = lastPackedData.getBitsPerValue();
+        // Lire l'en-tête
+        int header = lastPackedData.getData()[0];
+        int bits = header & 0xFFFF;
+
         int bitPosition = index * bits;
-        int wordIndex = bitPosition / 32;
-        int bitOffset = bitPosition % 32;
+        int wordIndex = (bitPosition / 32) + 1;
+        int bitOffset = bitPosition & 31;
         int mask = (1 << bits) - 1;
         int[] words = lastPackedData.getData();
 
@@ -102,10 +114,4 @@ public class BitpackingOverlapped implements BitPacking {
                 CompressionTypeEnum.OVERLAPPED, BitpackingOverlapped::new
         );
     }
-
-    @Override
-    public CompressionTypeEnum getType() {
-        return TYPE;
-    }
 }
-

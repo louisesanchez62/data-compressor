@@ -1,11 +1,9 @@
-package domain.entity;
+package domain.factory;
 
 import domain.BitPacking;
-import domain.value.object.BitPackingRegistry;
-import domain.value.object.factory.products.BitpackingOverlapped;
-import domain.value.object.factory.products.BitpackingAligned;
-import domain.value.object.factory.products.BitpackingWithOverflow;
-import domain.value.object.CompressionTypeEnum;
+import domain.factory.products.BitpackingOverlapped;
+import domain.factory.products.BitpackingAligned;
+import domain.factory.products.BitpackingWithOverflow;
 
 //public class BitPackingFactory {
 //

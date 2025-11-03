@@ -1,10 +1,10 @@
-package domain.value.object.factory.products;
+package domain.factory.products;
 
 import domain.BitPacking;
-import domain.entity.BitPackingFactory;
-import domain.value.object.CompressionTypeEnum;
-import domain.value.object.PackedData;
-import domain.value.object.UnpackedData;
+import domain.factory.BitPackingFactory;
+import domain.factory.CompressionTypeEnum;
+import domain.entities.PackedData;
+import domain.entities.UnpackedData;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,7 +52,7 @@ public class BitpackingWithOverflow implements BitPacking {
             }
 
             int wordIndex = bitPosition / WORD_BITS;
-            int bitOffset = bitPosition % WORD_BITS;
+            int bitOffset = bitPosition & 31;
             int bitsLeft = WORD_BITS - bitOffset;
 
             if (bitsLeft >= elementBits) {
@@ -128,7 +128,7 @@ public class BitpackingWithOverflow implements BitPacking {
 
         for (int i = 0; i < originalSize; i++) {
             int wordIndex = bitPosition / WORD_BITS;
-            int bitOffset = bitPosition % WORD_BITS;
+            int bitOffset = bitPosition & 31;
             int bitsLeft = WORD_BITS - bitOffset;
 
             int encoded;
@@ -174,7 +174,7 @@ public class BitpackingWithOverflow implements BitPacking {
         int bits = storedPayloadBits + 1;
         int bitPosition = index * bits;
         int wordIndex = bitPosition / WORD_BITS;
-        int bitOffset = bitPosition % WORD_BITS;
+        int bitOffset = bitPosition & 31;
         int mask = (1 << bits) - 1;
 
         int encoded;
@@ -195,10 +195,5 @@ public class BitpackingWithOverflow implements BitPacking {
         BitPackingFactory.getRegistry().register(
                 CompressionTypeEnum.OVERFLOW, BitpackingWithOverflow::new
         );
-    }
-
-    @Override
-    public CompressionTypeEnum getType() {
-        return TYPE;
     }
 }

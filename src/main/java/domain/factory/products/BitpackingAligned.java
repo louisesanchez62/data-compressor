@@ -1,10 +1,10 @@
-package domain.value.object.factory.products;
+package domain.factory.products;
 
 import domain.BitPacking;
-import domain.entity.BitPackingFactory;
-import domain.value.object.CompressionTypeEnum;
-import domain.value.object.PackedData;
-import domain.value.object.UnpackedData;
+import domain.factory.BitPackingFactory;
+import domain.factory.CompressionTypeEnum;
+import domain.entities.PackedData;
+import domain.entities.UnpackedData;
 
 // modulo 32 equivaut a & 31
 public class BitpackingAligned implements BitPacking {
@@ -13,6 +13,8 @@ public class BitpackingAligned implements BitPacking {
 
     /**
      * This method compresses data with aligned bit packing (values never cross word boundaries)
+     * Format: [Header: 32 bits] [Compressed Data]
+     * Header: 16 bits = originalSize, 16 bits = bitsPerValue
      * @param fromUnpackedData the data to compress
      * @param toPackedData the compressed output
      **/
@@ -22,12 +24,16 @@ public class BitpackingAligned implements BitPacking {
         int maxValueInArray = fromUnpackedData.getMaxValue();
         int maxBitsNeeded = this.calculateRequiredBits(maxValueInArray);
 
-        int valuesPerWord = 32 / maxBitsNeeded; // Calculate required size for compressed data
+        int valuesPerWord = 32 / maxBitsNeeded;
         int requiredWords = (originalArrayLength + valuesPerWord - 1) / valuesPerWord;
 
-        int[] compressedData = new int[requiredWords];
+        int[] compressedData = new int[requiredWords + 1];
+
+        int header = (originalArrayLength << 16) | maxBitsNeeded;
+        compressedData[0] = header;
+
         int currentWord = 0;
-        int outputIndex = 0;
+        int outputIndex = 1;
         int bitUsedInCurrentWord = 0;
 
         for (int i = 0; i < originalArrayLength; i++) {
@@ -49,7 +55,7 @@ public class BitpackingAligned implements BitPacking {
 
         toPackedData.setData(compressedData);
         toPackedData.setOriginalSize(originalArrayLength);
-        toPackedData.setCompressedSize(requiredWords);
+        toPackedData.setCompressedSize(requiredWords + 1);
         toPackedData.setBitsPerValue(maxBitsNeeded);
         this.lastPackedData = toPackedData;
     }
@@ -61,23 +67,26 @@ public class BitpackingAligned implements BitPacking {
      **/
     @Override
     public void decompress(PackedData fromPackedData, UnpackedData toUnpackedData) {
-        int maxBitsNeeded = fromPackedData.getBitsPerValue();
-        int originalArrayLength = fromPackedData.getOriginalSize();
+        // Lire l'en-tête
+        int header = fromPackedData.getData()[0];
+        int originalArrayLength = (header >>> 16) & 0xFFFF;
+        int maxBitsNeeded = header & 0xFFFF;
+
         int[] result = new int[originalArrayLength];
 
-        if (fromPackedData.getData().length == 0 || originalArrayLength == 0) {
+        if (fromPackedData.getData().length <= 1 || originalArrayLength == 0) {
             toUnpackedData.setData(result);
             return;
         }
 
         int mask = (1 << maxBitsNeeded) - 1;
-        int currentWord = fromPackedData.getData()[0];
+        int currentWord = fromPackedData.getData()[1];
         int outputIndex = 0;
         int bitUsedInCurrentWord = 0;
-        int inputIndex = 0;
+        int inputIndex = 1;
 
         for (int i = 0; i < originalArrayLength; i++) {
-            if (bitUsedInCurrentWord + maxBitsNeeded > 32) { // Move to next word
+            if (bitUsedInCurrentWord + maxBitsNeeded > 32) {
                 inputIndex++;
                 if (inputIndex < fromPackedData.getData().length) {
                     currentWord = fromPackedData.getData()[inputIndex];
@@ -96,23 +105,23 @@ public class BitpackingAligned implements BitPacking {
 
     @Override
     public int get(int index) {
-        int[] data = lastPackedData.getData();
-        int bits = lastPackedData.getBitsPerValue();
-        int valuesPerWord = 32 / bits;
-        int wordIndex = index / valuesPerWord;
-        int bitOffset = (index % valuesPerWord) * bits;
-        int mask = (1 << bits) - 1;
-        return (data[wordIndex] >>> bitOffset) & mask;
+        int[] compressedArray = lastPackedData.getData();
+
+        // Lire l'en-tête
+        int header = compressedArray[0];
+        int bitsPerValue = header & 0xFFFF;
+
+        int valuesPerWord = 32 / bitsPerValue;
+        int wordIndex = (index / valuesPerWord) + 1;
+        int bitOffset = (index % valuesPerWord) * bitsPerValue;
+        int mask = (1 << bitsPerValue) - 1;
+
+        return (compressedArray[wordIndex] >>> bitOffset) & mask;
     }
 
     static {
         BitPackingFactory.getRegistry().register(
                 CompressionTypeEnum.ALIGNED, BitpackingAligned::new
         );
-    }
-
-    @Override
-    public CompressionTypeEnum getType() {
-        return this.TYPE;
     }
 }
