@@ -1,4 +1,4 @@
-package domain.value.object;
+package domain.entities;
 
 import domain.exception.UnpackedDataException;
 
